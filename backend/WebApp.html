@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ระบบบันทึกการเงิน</title>
+  <style>
+    :root{--navy:#0b2a4a;--blue:#1f6feb;--green:#1f9d67;--orange:#d98a00;--red:#c23b30;--bg:#eef3f8}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:#0f2740}
+    .top{background:var(--navy);color:#fff;padding:14px 16px;font-size:24px;font-weight:700}
+    .wrap{max-width:1100px;margin:0 auto;padding:12px}
+    .card{background:#fff;border-radius:14px;padding:14px;margin:10px 0}
+    .tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    @media(min-width:900px){.tabs{grid-template-columns:repeat(5,minmax(0,1fr));}}
+    button{border:0;border-radius:12px;padding:12px 14px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}
+    .ghost{background:#e7eef7;color:#10304f}
+    .row{display:grid;grid-template-columns:1fr;gap:10px}
+    @media(min-width:900px){.row{grid-template-columns:repeat(3,minmax(0,1fr));}}
+    label{font-size:13px;color:#5b6d82;font-weight:700}
+    input,select,textarea{width:100%;padding:11px;border:1px solid #c8d7ea;border-radius:10px;box-sizing:border-box;font-size:16px}
+    textarea{min-height:86px}
+    .hidden{display:none}
+    .kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    @media(min-width:900px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr));}}
+    .kpi{font-size:36px;font-weight:800}
+    .small{font-size:13px;color:#5f7185}
+    .ok{color:var(--green)} .warn{color:var(--orange)} .bad{color:var(--red)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #dbe6f2;text-align:left;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="top">ระบบบันทึกการเงิน</div>
+  <div class="wrap">
+    <div class="card" id="loginCard">
+      <h3>เข้าใช้งาน</h3>
+      <div class="row">
+        <div><label>อีเมลผู้ใช้</label><input id="user" value="owner@local"></div>
+        <div><label>สิทธิ์</label><select id="role"><option value="owner">Owner</option><option value="employee">Employee</option></select></div>
+        <div><label>&nbsp;</label><button onclick="login()">เข้าใช้งานระบบ</button></div>
+      </div>
+      <div class="small" id="msg"></div>
+    </div>
+
+    <div id="app" class="hidden">
+      <div class="card tabs">
+        <button class="ghost" onclick="show('sales')">บันทึกยอดขาย</button>
+        <button class="ghost" onclick="show('expense')">บันทึกค่าใช้จ่าย</button>
+        <button class="ghost" onclick="show('deposit')">บันทึกฝากเงิน</button>
+        <button class="ghost" onclick="show('receivable')">บันทึกลูกหนี้</button>
+        <button class="ghost" onclick="show('cancel')">รายการยกเลิกบิล</button>
+        <button class="ghost" onclick="show('recon')">กระทบยอดเงินสด</button>
+        <button class="ghost" onclick="show('empdash')">สรุปยอดวันนี้</button>
+        <button class="ghost" onclick="show('ownerdash')">Dashboard แสดงผล</button>
+        <button class="ghost" onclick="show('approve')">อนุมัติยกเลิกบิล</button>
+        <button onclick="logout()">ออกจากระบบ</button>
+      </div>
+
+      <div class="card page" id="sales"><h3>หน้าบันทึกข้อมูลยอดขาย</h3><div class="row"><div><label>วันที่</label><input type="date" id="s_date"></div><div><label>เงินสด</label><input type="number" id="s_cash"></div><div><label>โอน</label><input type="number" id="s_transfer"></div><div><label>เครดิต</label><input type="number" id="s_credit"></div><div><label>ยอดขายรวม</label><input type="number" id="s_total"></div><div><label>เงินคงเหลือในลิ้นชัก</label><input type="number" id="s_drawer" value="500"></div><div><label>ผู้บันทึก</label><input id="s_by"></div><div><label>หมายเหตุ</label><textarea id="s_note"></textarea></div><div><label>&nbsp;</label><button onclick="saveSales()">บันทึกยอดขาย</button></div></div></div>
+
+      <div class="card page hidden" id="expense"><h3>หน้าบันทึกข้อมูลค่าใช้จ่าย</h3><div class="row"><div><label>วันที่</label><input type="date" id="e_date"></div><div><label>รายการค่าใช้จ่าย</label><input id="e_name"></div><div><label>จำนวนเงิน</label><input type="number" id="e_amount"></div><div><label>แหล่งจ่ายเงิน</label><select id="e_source"><option value="เงินสด">เงินสด</option><option value="ธนาคาร">ธนาคาร</option></select></div><div><label>ผู้บันทึก</label><input id="e_by"></div><div><label>หมายเหตุ</label><textarea id="e_note"></textarea></div><div><label>&nbsp;</label><button onclick="saveExpense()">บันทึกค่าใช้จ่าย</button></div></div></div>
+
+      <div class="card page hidden" id="deposit"><h3>หน้าบันทึกข้อมูลฝากเงิน</h3><div class="row"><div><label>วันที่</label><input type="date" id="d_date"></div><div><label>ยอดฝากเงิน</label><input type="number" id="d_amount"></div><div><label>บัญชีธนาคาร</label><input id="d_bank"></div><div><label>ผู้บันทึก</label><input id="d_by"></div><div><label>หมายเหตุ</label><textarea id="d_note"></textarea></div><div><label>&nbsp;</label><button onclick="saveDeposit()">บันทึกฝากเงิน</button></div></div></div>
+
+      <div class="card page hidden" id="receivable"><h3>หน้าบันทึกข้อมูลลูกหนี้</h3><div class="row"><div><label>วันที่</label><input type="date" id="r_date"></div><div><label>ชื่อลูกค้า</label><input id="r_customer"></div><div><label>เลขที่บิล</label><input id="r_bill"></div><div><label>ยอดเครดิต</label><input type="number" id="r_credit"></div><div><label>ยอดชำระแล้ว</label><input type="number" id="r_paid"></div><div><label>ครบกำหนด</label><input type="date" id="r_due"></div><div><label>ผู้บันทึก</label><input id="r_by"></div><div><label>หมายเหตุ</label><textarea id="r_note"></textarea></div><div><label>&nbsp;</label><button onclick="saveReceivable()">บันทึกลูกหนี้</button></div></div></div>
+
+      <div class="card page hidden" id="cancel"><h3>หน้าบันทึกข้อมูลรายการยกเลิกบิล</h3><div class="row"><div><label>วันที่</label><input type="date" id="c_date"></div><div><label>เลขที่บิล</label><input id="c_bill"></div><div><label>ยอดยกเลิก</label><input type="number" id="c_amount"></div><div><label>เหตุผล</label><input id="c_reason"></div><div><label>รายละเอียด</label><textarea id="c_detail"></textarea></div><div><label>ผู้บันทึก</label><input id="c_by"></div><div><label>&nbsp;</label><button onclick="saveCancel()">ส่งคำขอยกเลิก</button></div></div></div>
+
+      <div class="card page hidden" id="recon"><h3>หน้าบันทึกข้อมูลกระทบยอดเงินสด</h3><div class="row"><div><label>วันที่</label><input type="date" id="cr_date"></div><div><label>เงินสดควรเหลือ (Auto)</label><input id="cr_expected" readonly></div><div><label>เงินสดนับจริง</label><input type="number" id="cr_actual"></div><div><label>ผลต่าง (Auto)</label><input id="cr_diff" readonly></div><div><label>สถานะ (Auto)</label><input id="cr_status" readonly></div><div><label>สาเหตุ (ต้องระบุเมื่อไม่ตรงยอด)</label><select id="cr_reason"><option value="">-</option><option>เงินทอนลูกค้า</option><option>เศษเหรียญ</option><option>นับผิด</option><option>ค่าใช้จ่ายยังไม่บันทึก</option><option>ฝากเงินยังไม่บันทึก</option><option>เอกสารไม่ครบ</option><option>อื่นๆ</option></select></div><div><label>ผู้บันทึก</label><input id="cr_by"></div><div><label>หมายเหตุ</label><textarea id="cr_note"></textarea></div><div><label>&nbsp;</label><button onclick="saveRecon()">บันทึกกระทบยอด</button></div></div></div>
+
+      <div class="card page hidden" id="empdash"><h3>สรุปยอดวันนี้</h3><div class="row"><div><label>วันที่</label><input type="date" id="ed_date"></div><div><label>&nbsp;</label><button onclick="loadEmpDash()">โหลดสรุป</button></div></div><div class="kpis"><div><div class="small">ยอดขาย</div><div class="kpi" id="k_total">฿0.00</div></div><div><div class="small">เงินสด</div><div class="kpi" id="k_cash">฿0.00</div></div><div><div class="small">โอน</div><div class="kpi" id="k_transfer">฿0.00</div></div><div><div class="small">เครดิต</div><div class="kpi" id="k_credit">฿0.00</div></div><div><div class="small">ค่าใช้จ่าย</div><div class="kpi" id="k_expense">฿0.00</div></div><div><div class="small">ฝากเงิน</div><div class="kpi" id="k_deposit">฿0.00</div></div><div><div class="small">เงินสดควรเหลือ</div><div class="kpi" id="k_expected">฿0.00</div></div><div><div class="small">เงินสดนับจริง</div><div class="kpi" id="k_actual">฿0.00</div></div><div><div class="small">ผลต่าง</div><div class="kpi" id="k_diff">฿0.00</div></div><div><div class="small">สถานะ</div><div class="kpi" id="k_status">-</div></div></div></div>
+
+      <div class="card page hidden" id="ownerdash"><h3>ภาพรวมการเงิน</h3><div class="row"><div><label>จากวันที่</label><input type="date" id="o_from"></div><div><label>ถึงวันที่</label><input type="date" id="o_to"></div><div><label>&nbsp;</label><button onclick="loadOwnerDash()">แสดงผลช่วงวันที่</button></div></div><div class="kpis"><div><div class="small">Sales</div><div class="kpi" id="o_sales">฿0.00</div></div><div><div class="small">Cash</div><div class="kpi" id="o_cash">฿0.00</div></div><div><div class="small">Transfer</div><div class="kpi" id="o_transfer">฿0.00</div></div><div><div class="small">Credit</div><div class="kpi" id="o_credit">฿0.00</div></div><div><div class="small">Expenses</div><div class="kpi" id="o_expenses">฿0.00</div></div><div><div class="small">Deposits</div><div class="kpi" id="o_deposits">฿0.00</div></div><div><div class="small">Expected Cash</div><div class="kpi" id="o_expected">฿0.00</div></div><div><div class="small">Actual Cash</div><div class="kpi" id="o_actual">฿0.00</div></div><div><div class="small">Difference</div><div class="kpi" id="o_diff">฿0.00</div></div></div><div style="overflow:auto;margin-top:12px"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>เงินสดควรเหลือ</th><th>เงินสดนับจริง</th><th>ผลต่าง</th><th>สถานะ</th><th>สาเหตุ</th></tr></thead><tbody id="o_tb"></tbody></table></div></div>
+
+      <div class="card page hidden" id="approve"><h3>อนุมัติยกเลิกบิล</h3><button onclick="loadCancels()">โหลดรายการ pending</button><div style="overflow:auto;margin-top:12px"><table><thead><tr><th>ID</th><th>วันที่</th><th>ยอด</th><th>เหตุผล</th><th>ผู้บันทึก</th><th>จัดการ</th></tr></thead><tbody id="c_tb"></tbody></table></div></div>
+    </div>
+  </div>
+
+<script>
+const THB = new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB'});
+let S = null;
+function t(){return new Date().toISOString().slice(0,10)}
+function m(x){document.getElementById('msg').textContent=x||''}
+function show(id){document.querySelectorAll('.page').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden')}
+function call(action,payload){
+  return new Promise((resolve,reject)=>{
+    google.script.run.withSuccessHandler(resolve).withFailureHandler(err=>reject(new Error(err.message||err))).appCall(action,payload);
+  });
+}
+function initDates(){['s_date','e_date','d_date','r_date','c_date','cr_date','ed_date','o_from','o_to'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=t();});}
+function setBy(){['s_by','e_by','d_by','r_by','c_by','cr_by'].forEach(id=>{const el=document.getElementById(id); if(el && !el.value) el.value = (S&&S.user)||'';});}
+async function login(){
+  try{const user=document.getElementById('user').value.trim();const role=document.getElementById('role').value;await call('login',{user,role});S={user,role};document.getElementById('loginCard').classList.add('hidden');document.getElementById('app').classList.remove('hidden');initDates();setBy();show('sales');m('พร้อมใช้งาน');}
+  catch(e){m('เข้าใช้งานไม่สำเร็จ: '+e.message)}
+}
+function logout(){location.reload()}
+function p(v){return Number(v||0)}
+async function saveSales(){await call('createDailySales',{...S,entry_date:v('s_date'),cash_amount:p(v('s_cash')),transfer_amount:p(v('s_transfer')),credit_amount:p(v('s_credit')),total_sales:p(v('s_total')),drawer_balance:p(v('s_drawer')),submitted_by:v('s_by'),note:v('s_note')});m('บันทึกยอดขายแล้ว')}
+async function saveExpense(){await call('createExpense',{...S,entry_date:v('e_date'),expense_name:v('e_name'),category:'ทั่วไป',amount:p(v('e_amount')),payment_source:v('e_source'),submitted_by:v('e_by'),note:v('e_note')});m('บันทึกค่าใช้จ่ายแล้ว')}
+async function saveDeposit(){const d=await call('getEmployeeDailyDashboard',{...S,date:v('d_date')});await call('createDeposit',{...S,entry_date:v('d_date'),cash_before_deposit:p(d.totals.cash||0),deposit_amount:p(v('d_amount')),bank_account:v('d_bank'),submitted_by:v('d_by'),note:v('d_note')});m('บันทึกฝากเงินแล้ว')}
+async function saveReceivable(){await call('createReceivable',{...S,entry_date:v('r_date'),customer_name:v('r_customer')+' | บิล:'+v('r_bill'),credit_amount:p(v('r_credit')),paid_amount:p(v('r_paid')),due_date:v('r_due'),submitted_by:v('r_by'),note:v('r_note')});m('บันทึกลูกหนี้แล้ว')}
+async function saveCancel(){await call('createCancelRequest',{...S,entry_date:v('c_date'),cancel_amount:p(v('c_amount')),reason:v('c_reason')+' | บิล:'+v('c_bill'),detail:v('c_detail'),submitted_by:v('c_by')});m('ส่งรายการยกเลิกบิลแล้ว')}
+async function saveRecon(){
+  const d=await call('getEmployeeDailyDashboard',{...S,date:v('cr_date')});
+  const expected=p(d.totals.expected_cash||0), actual=p(v('cr_actual')), diff=actual-expected;
+  const status=diff===0?'MATCHED':(diff<0?'SHORT':'OVER');
+  document.getElementById('cr_expected').value=expected;document.getElementById('cr_diff').value=diff;document.getElementById('cr_status').value=status;
+  await call('createCashRecon',{...S,entry_date:v('cr_date'),actual_cash:actual,difference_reason:v('cr_reason'),submitted_by:v('cr_by'),note:v('cr_note')});
+  m('บันทึกกระทบยอดแล้ว');
+}
+async function loadEmpDash(){const d=await call('getEmployeeDailyDashboard',{...S,date:v('ed_date')});const t=d.totals;set('k_total',t.total_sales);set('k_cash',t.cash);set('k_transfer',t.transfer);set('k_credit',t.credit);set('k_expense',t.expense);set('k_deposit',t.deposit);set('k_expected',t.expected_cash);set('k_actual',t.actual_cash);set('k_diff',t.difference);const st=document.getElementById('k_status');st.textContent=t.recon_status;st.className='kpi '+(t.recon_status==='MATCHED'?'ok':(t.recon_status==='SHORT'?'bad':'warn'))}
+async function loadOwnerDash(){const d=await call('getOwnerRangeDashboard',{...S,from_date:v('o_from'),to_date:v('o_to')});const t=d.totals;set('o_sales',t.sales_today);set('o_cash',t.cash);set('o_transfer',t.transfer);set('o_credit',t.credit);set('o_expenses',t.expenses);set('o_deposits',t.deposits);set('o_expected',t.expected_cash);set('o_actual',t.actual_cash);set('o_diff',t.difference);const tb=document.getElementById('o_tb');tb.innerHTML='';(d.latest_recon_variances||[]).forEach(r=>{const tr=document.createElement('tr');const c=r.recon_status==='SHORT'?'bad':(r.recon_status==='OVER'?'warn':'ok');tr.innerHTML=`<td>${r.entry_date||''}</td><td>${r.employee||''}</td><td>${THB.format(r.expected_cash||0)}</td><td>${THB.format(r.actual_cash||0)}</td><td class='${c}'>${THB.format(r.difference||0)}</td><td class='${c}'>${r.recon_status||''}</td><td>${r.difference_reason||''}</td>`;tb.appendChild(tr);});}
+async function loadCancels(){const rows=await call('getPendingCancelRequests',{...S});const tb=document.getElementById('c_tb');tb.innerHTML='';rows.forEach(r=>{const id=r[0];const tr=document.createElement('tr');tr.innerHTML=`<td>${id}</td><td>${r[4]}</td><td>${THB.format(r[6]||0)}</td><td>${r[7]}</td><td>${r[2]}</td><td><button onclick="approve('${id}')">Approve</button> <button class='ghost' onclick="reject('${id}')">Reject</button></td>`;tb.appendChild(tr);});}
+async function approve(id){await call('approveCancelRequest',{...S,record_id:id});loadCancels();m('อนุมัติแล้ว')}
+async function reject(id){await call('rejectCancelRequest',{...S,record_id:id});loadCancels();m('ปฏิเสธแล้ว')}
+function v(id){return document.getElementById(id).value}
+function set(id,n){document.getElementById(id).textContent=THB.format(Number(n||0))}
+</script>
+</body>
+</html>

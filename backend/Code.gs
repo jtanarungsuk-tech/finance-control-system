@@ -35,6 +35,11 @@ const SYSTEM = {
 };
 
 function doGet(e) {
+  if (!e || !e.parameter || !e.parameter.action) {
+    return HtmlService.createHtmlOutputFromFile('WebApp')
+      .setTitle('ระบบบันทึกการเงิน')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   return handleRequest_('GET', e && e.parameter ? e.parameter : {});
 }
 
@@ -45,6 +50,82 @@ function doPost(e) {
   } catch (err) {
     return jsonResponse_({ ok: false, error: 'Invalid JSON body' }, 400);
   }
+}
+
+function appCall(action, payload) {
+  const data = payload || {};
+  const user = getUserContext_({
+    role: data.role,
+    user: data.user
+  });
+  const branch = 'MAIN';
+  const withBranch = Object.assign({}, data, { branch: branch });
+
+  if (action === 'login') return login_({ user: data.user, role: data.role, branch: branch });
+  if (action === 'getEmployeeDailyDashboard') return getEmployeeDailyDashboard_(user, { date: data.date, branch: branch });
+  if (action === 'getOwnerDashboard') return getOwnerDashboard_(user, { date: data.date, branch: '' });
+  if (action === 'getOwnerRangeDashboard') return getOwnerRangeDashboard_(user, data);
+  if (action === 'getPendingCancelRequests') return getPendingCancelRequests_();
+  if (action === 'createDailySales') return createDailySales_(user, withBranch);
+  if (action === 'createExpense') return createExpense_(user, withBranch);
+  if (action === 'createDeposit') return createDeposit_(user, withBranch);
+  if (action === 'createReceivable') return createReceivable_(user, withBranch);
+  if (action === 'createCancelRequest') return createCancelRequest_(user, withBranch);
+  if (action === 'createCashRecon') return createCashRecon_(user, withBranch);
+  if (action === 'approveCancelRequest') return approveCancelRequest_(user, data);
+  if (action === 'rejectCancelRequest') return rejectCancelRequest_(user, data);
+  throw new Error('Unknown app action');
+}
+
+function getOwnerRangeDashboard_(user, data) {
+  requireRole_(user, [SYSTEM.ROLES.OWNER]);
+  const fromDate = req_(data.from_date || data.date_from);
+  const toDate = req_(data.to_date || data.date_to);
+  const start = parseDate_(fromDate);
+  const end = parseDate_(toDate);
+  if (!start || !end || start > end) throw new Error('Invalid date range');
+
+  let d = new Date(start);
+  const totals = {
+    sales_today: 0,
+    cash: 0,
+    transfer: 0,
+    credit: 0,
+    expenses: 0,
+    deposits: 0,
+    expected_cash: 0,
+    actual_cash: 0,
+    difference: 0
+  };
+  const reconMap = {};
+
+  while (d <= end) {
+    const key = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    const one = getOwnerDashboard_(user, { date: key, branch: '' });
+    totals.sales_today += toNumber_(one.sales_today);
+    totals.cash += toNumber_(one.cash);
+    totals.transfer += toNumber_(one.transfer);
+    totals.credit += toNumber_(one.credit);
+    totals.expenses += toNumber_(one.expenses);
+    totals.deposits += toNumber_(one.deposits);
+    totals.expected_cash += toNumber_(one.expected_cash);
+    totals.actual_cash += toNumber_(one.actual_cash);
+    totals.difference += toNumber_(one.difference);
+    (one.latest_recon_variances || []).forEach(function (r) {
+      reconMap[String(r.entry_date) + '|' + String(r.branch)] = r;
+    });
+    d.setDate(d.getDate() + 1);
+  }
+
+  return {
+    from_date: normalizeDate_(fromDate),
+    to_date: normalizeDate_(toDate),
+    totals: totals,
+    latest_recon_variances: Object.keys(reconMap).map(function (k) { return reconMap[k]; })
+      .sort(function (a, b) { return String(b.entry_date).localeCompare(String(a.entry_date)); })
+      .slice(0, 50),
+    drawer_balance: Number(getSettingOrDefault_('DRAWER_BALANCE', 0)) || 0
+  };
 }
 
 function handleRequest_(method, data) {
