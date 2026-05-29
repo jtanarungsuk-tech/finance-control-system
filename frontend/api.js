@@ -1,8 +1,9 @@
 /* global API_URL */
 (function () {
   const PLACEHOLDER = 'PUT_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';
+  const PROD_API_URL = 'https://script.google.com/macros/s/AKfycbwcVB9c7hm80jT2gIgYN9U1pG0uLgp3hsJ6XSyQ3Bo43LgDNTVs0eIaktt9K6zBOz2q/exec';
   const configuredUrl = localStorage.getItem('fcs_api_url') || '';
-  const baseUrl = configuredUrl || (typeof API_URL === 'string' ? API_URL : '');
+  const baseUrl = configuredUrl || (typeof API_URL === 'string' ? API_URL : '') || PROD_API_URL;
   const useRemote = !!baseUrl && !baseUrl.includes(PLACEHOLDER);
 
   const DB_KEY = 'fcs_db_v1';
