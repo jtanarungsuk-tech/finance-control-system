@@ -41,7 +41,7 @@
 
   <div class="card hidden" id="frameArea"><h3>เครื่องมือผู้บริหาร</h3><iframe id="ownerFrame" src="owner-cancel-approval.html" style="width:100%;min-height:680px;border:0;border-radius:10px;"></iframe></div>
 </div>
-<script src="app.js"></script>
+<script src="config.js"></script><script src="api.js"></script><script src="app.js"></script>
 <script>
 (function(){
   const safeSet = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -50,78 +50,81 @@
   const statusCls = { MATCHED: 'ok', SHORT: 'bad', OVER: 'warn' };
 
   function msg(t){ const el=document.getElementById('sysMsg'); if(el) el.textContent=t; }
-  function getDB(){ try { const raw=localStorage.getItem('fcs_db_v1'); return raw?JSON.parse(raw):null; } catch { return null; } }
-  function saveDB(db){ localStorage.setItem('fcs_db_v1', JSON.stringify(db)); }
   function today(){ return new Date().toISOString().slice(0,10); }
-  function between(d,f,t){ return (!f||d>=f)&&(!t||d<=t); }
-  function sum(rows,key){ return rows.reduce((a,r)=>a+Number(r[key]||0),0); }
-
-  function ensureData(){
-    let db=getDB();
-    if(!db){
-      db={ DAILY_SALES:[], EXPENSES:[], DEPOSITS:[], RECEIVABLES:[], CANCEL_REQUESTS:[], CASH_RECON:[], ATTACHMENTS:[], AUDIT_LOG:[], SETTINGS:{DRAWER_BALANCE:'500'} };
+  function toDate(s){ return new Date(s + 'T00:00:00'); }
+  function fmtDate(d){ return d.toISOString().slice(0,10); }
+  function listDates(fromDate, toDate) {
+    const out = [];
+    const cur = new Date(fromDate);
+    while (cur <= toDate) {
+      out.push(fmtDate(cur));
+      cur.setDate(cur.getDate() + 1);
     }
-    if((db.DAILY_SALES||[]).length===0){
-      const d=today();
-      db.DAILY_SALES=[{record_id:'SAL-BOOT',entry_date:d,branch:'MAIN',created_by:'A',cash_amount:10000,transfer_amount:4000,credit_amount:1000,total_sales:15000,drawer_balance:500}];
-      db.EXPENSES=[{record_id:'EXP-BOOT',entry_date:d,branch:'MAIN',created_by:'A',amount:1200}];
-      db.DEPOSITS=[{record_id:'DEP-BOOT',entry_date:d,branch:'MAIN',created_by:'A',deposit_amount:6000,coin_balance:0}];
-      db.CASH_RECON=[{record_id:'RECASH-BOOT',entry_date:d,branch:'MAIN',created_by:'A',expected_cash:2800,actual_cash:2750,difference:-50,recon_status:'SHORT',difference_reason:'เศษเหรียญ'}];
-      db.SETTINGS = db.SETTINGS || {}; db.SETTINGS.DRAWER_BALANCE='500';
-      msg('พร้อมใช้งาน: สร้างข้อมูลตัวอย่างให้อัตโนมัติแล้ว');
-    } else {
-      msg('พร้อมใช้งาน');
-    }
-    saveDB(db);
-    return db;
+    return out;
   }
 
-  function renderDashboard(){
-    const db = ensureData();
-    const f = document.getElementById('from_date')?.value || '';
-    const t = document.getElementById('to_date')?.value || '';
+  async function renderDashboard(){
+    const s = getSession();
+    if (!s) return;
+    const to = document.getElementById('to_date')?.value || today();
+    const from = document.getElementById('from_date')?.value || to;
+    const fromObj = toDate(from);
+    const toObj = toDate(to);
+    if (fromObj > toObj) throw new Error('ช่วงวันที่ไม่ถูกต้อง (จากวันที่ต้องไม่มากกว่า ถึงวันที่)');
 
-    const sales=(db.DAILY_SALES||[]).filter(r=>between(r.entry_date,f,t));
-    const exps=(db.EXPENSES||[]).filter(r=>between(r.entry_date,f,t));
-    const deps=(db.DEPOSITS||[]).filter(r=>between(r.entry_date,f,t));
-    const recs=(db.CASH_RECON||[]).filter(r=>between(r.entry_date,f,t));
+    const dates = listDates(fromObj, toObj);
+    const rows = await Promise.all(dates.map((date) => API.get('getOwnerDashboard', {
+      role: s.role,
+      user: s.email,
+      branch: s.branch || 'MAIN',
+      date
+    })));
 
-    const salesTotal=sum(sales,'total_sales');
-    const cash=sum(sales,'cash_amount');
-    const transfer=sum(sales,'transfer_amount');
-    const credit=sum(sales,'credit_amount');
-    const expenses=sum(exps,'amount');
-    const deposits=sum(deps,'deposit_amount');
-    const expected=cash-expenses-deposits;
+    const sum = (key) => rows.reduce((acc, r) => acc + Number(r[key] || 0), 0);
+    const salesTotal = sum('sales_today');
+    const cash = sum('cash');
+    const transfer = sum('transfer');
+    const credit = sum('credit');
+    const expenses = sum('expenses');
+    const deposits = sum('deposits');
+    const expected = sum('expected_cash');
+    const actual = sum('actual_cash');
+    const difference = sum('difference');
+    const drawerBalance = rows.length ? Number(rows[rows.length - 1].drawer_balance || 0) : 0;
+    const st = difference === 0 ? 'MATCHED' : (difference < 0 ? 'SHORT' : 'OVER');
 
-    const last=recs.length?recs[recs.length-1]:null;
-    const actual=last?Number(last.actual_cash||0):0;
-    const diff=last?Number(last.difference||0):(actual-expected);
-    const st=last?String(last.recon_status||'MATCHED'):(diff===0?'MATCHED':(diff<0?'SHORT':'OVER'));
-
+    msg(`พร้อมใช้งาน (เชื่อมต่อออนไลน์แล้ว) | แสดงผลช่วง ${from} ถึง ${to}`);
     safeSet('sales_total', thb(salesTotal));
     safeSet('cash', thb(cash));
     safeSet('transfer', thb(transfer));
     safeSet('credit', thb(credit));
     safeSet('expenses', thb(expenses));
     safeSet('deposits', thb(deposits));
-    safeSet('drawer_balance', thb((db.SETTINGS&&db.SETTINGS.DRAWER_BALANCE)||0));
+    safeSet('drawer_balance', thb(drawerBalance));
     safeSet('expected_cash', thb(expected));
     safeSet('actual_cash', thb(actual));
-    safeSet('difference', thb(diff));
+    safeSet('difference', thb(difference));
 
-    const stEl=document.getElementById('recon_status');
-    if(stEl){ stEl.className='kpi '+(statusCls[st]||''); stEl.textContent=statusLabel[st]||st; }
-    const dfEl=document.getElementById('difference');
-    if(dfEl){ dfEl.className='kpi '+(statusCls[st]||''); }
+    const stEl = document.getElementById('recon_status');
+    if (stEl) { stEl.className = 'kpi ' + (statusCls[st] || ''); stEl.textContent = statusLabel[st] || st; }
+    const dfEl = document.getElementById('difference');
+    if (dfEl) dfEl.className = 'kpi ' + (statusCls[st] || '');
 
-    const tb=document.getElementById('recon_tb');
-    if(tb){
-      tb.innerHTML='';
-      recs.filter(r=>Number(r.difference||0)!==0).slice(-10).reverse().forEach(r=>{
-        const tr=document.createElement('tr');
-        const rc = r.recon_status==='SHORT' ? 'status-rejected' : (r.recon_status==='OVER' ? 'status-pending' : '');
-        tr.innerHTML=`<td>${r.entry_date||''}</td><td>${r.branch||''}</td><td>${r.created_by||''}</td><td>${thb(r.expected_cash||0)}</td><td>${thb(r.actual_cash||0)}</td><td class="${rc}">${thb(r.difference||0)}</td><td class="${rc}">${statusLabel[r.recon_status]||r.recon_status||''}</td><td>${r.difference_reason||''}</td>`;
+    const reconItems = rows
+      .flatMap((r) => r.latest_recon_variances || [])
+      .map((r) => ({ ...r, entry_date: String(r.entry_date || '').slice(0, 10) }))
+      .filter((r) => r && r.entry_date >= from && r.entry_date <= to);
+
+    const tb = document.getElementById('recon_tb');
+    if (tb) {
+      tb.innerHTML = '';
+      reconItems
+        .sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)))
+        .slice(0, 100)
+        .forEach(r => {
+        const tr = document.createElement('tr');
+        const rc = r.recon_status === 'SHORT' ? 'status-rejected' : (r.recon_status === 'OVER' ? 'status-pending' : '');
+        tr.innerHTML = `<td>${r.entry_date || ''}</td><td>${r.branch || ''}</td><td>${r.employee || ''}</td><td>${thb(r.expected_cash || 0)}</td><td>${thb(r.actual_cash || 0)}</td><td class="${rc}">${thb(r.difference || 0)}</td><td class="${rc}">${statusLabel[r.recon_status] || r.recon_status || ''}</td><td>${r.difference_reason || ''}</td>`;
         tb.appendChild(tr);
       });
     }
@@ -155,9 +158,9 @@
     const t=document.getElementById('to_date');
     if(f) f.value=td;
     if(t) t.value=td;
-    document.getElementById('applyRange')?.addEventListener('click', renderDashboard);
+    document.getElementById('applyRange')?.addEventListener('click', async ()=>{ try { await renderDashboard(); } catch (e) { msg('โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e)); } });
     bindTabs();
-    renderDashboard();
+    renderDashboard().catch((e)=>msg('โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e)));
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
