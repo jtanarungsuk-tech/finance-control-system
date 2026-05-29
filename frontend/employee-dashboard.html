@@ -1,0 +1,82 @@
+<!doctype html><html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Employee Dashboard</title><link rel="stylesheet" href="styles.css"></head><body>
+<div class="topbar"><div class="brand">Employee Dashboard</div></div>
+<div class="container">
+  <div class="safari-tabs" id="menuTabs">
+    <button class="safari-tab active" data-mode="frame" data-page="sales-entry.html">บันทึกยอดขาย</button>
+    <button class="safari-tab" data-mode="frame" data-page="expense-entry.html">บันทึกค่าใช้จ่าย</button>
+    <button class="safari-tab" data-mode="frame" data-page="deposit-entry.html">บันทึกฝากเงิน</button>
+    <button class="safari-tab" data-mode="frame" data-page="receivable-entry.html">บันทึกลูกหนี้</button>
+    <button class="safari-tab" data-mode="frame" data-page="cancel-request.html">รายการยกเลิกบิล</button>
+    <button class="safari-tab" data-mode="frame" data-page="cash-recon.html">กระทบยอดเงินสด</button>
+    <button class="safari-tab" data-mode="summary" data-page="">สรุปยอดวันนี้</button>
+  </div>
+
+  <div class="card hidden" id="summaryCard"><h3>สรุปวันนี้</h3><div class="grid">
+    <div><div class="small">ยอดขายวันนี้</div><div class="kpi" id="k_total">-</div></div>
+    <div><div class="small">เงินสด</div><div class="kpi" id="k_cash">-</div></div>
+    <div><div class="small">โอน</div><div class="kpi" id="k_transfer">-</div></div>
+    <div><div class="small">เครดิต</div><div class="kpi" id="k_credit">-</div></div>
+    <div><div class="small">ค่าใช้จ่าย</div><div class="kpi" id="k_expense">-</div></div>
+    <div><div class="small">ฝากเงิน</div><div class="kpi" id="k_deposit">-</div></div>
+    <div><div class="small">เงินคงเหลือในลิ้นชัก</div><div class="kpi" id="k_drawer">-</div></div>
+  </div></div>
+
+  <div class="card hidden" id="reconCard"><h3>กระทบยอดเงินสดวันนี้</h3><div class="grid">
+    <div><div class="small">เงินสดควรเหลือ</div><div class="kpi" id="r_expected">-</div></div>
+    <div><div class="small">เงินสดนับจริง</div><div class="kpi" id="r_actual">-</div></div>
+    <div><div class="small">ผลต่าง</div><div class="kpi" id="r_diff">-</div></div>
+    <div><div class="small">สถานะ</div><div class="kpi" id="r_status">-</div></div>
+  </div><p class="small" id="r_reason"></p></div>
+
+  <div class="card" id="formCard"><h3>หน้าบันทึกข้อมูล</h3><iframe id="workFrame" src="sales-entry.html" style="width:100%;min-height:720px;border:0;border-radius:10px;"></iframe></div>
+  <button class="danger" onclick="logout()">ออกจากระบบ</button>
+</div>
+<script src="config.js"></script><script src="api.js"></script><script src="app.js"></script>
+<script>
+let sessionRef = null;
+const statusLabel = { MATCHED: 'ตรงยอด', SHORT: 'เงินขาด', OVER: 'เงินเกิน' };
+const statusClass = { MATCHED: 'ok', SHORT: 'bad', OVER: 'warn' };
+
+async function loadSummary() {
+  const d = await API.get('getEmployeeDailyDashboard',{role:sessionRef.role,user:sessionRef.email,branch:sessionRef.branch,date:todayStr()});
+  const t=d.totals;
+  setText('k_total',thb(t.total_sales)); setText('k_cash',thb(t.cash)); setText('k_transfer',thb(t.transfer)); setText('k_credit',thb(t.credit)); setText('k_expense',thb(t.expense)); setText('k_deposit',thb(t.deposit)); setText('k_drawer',thb(t.drawer_balance));
+  setText('r_expected', thb(t.expected_cash)); setText('r_actual', thb(t.actual_cash)); setText('r_diff', thb(t.difference));
+  const st = t.recon_status || (t.difference === 0 ? 'MATCHED' : (t.difference < 0 ? 'SHORT' : 'OVER'));
+  const statusEl = document.getElementById('r_status');
+  const diffEl = document.getElementById('r_diff');
+  statusEl.textContent = statusLabel[st] || st;
+  statusEl.className = 'kpi ' + (statusClass[st] || '');
+  diffEl.className = 'kpi ' + (statusClass[st] || '');
+  setText('r_reason', t.difference_reason ? ('สาเหตุ: ' + t.difference_reason) : '');
+}
+
+function setActiveTab(el) {
+  document.querySelectorAll('.safari-tab').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+}
+
+(async function(){
+  const s = requireSession(['employee','owner']); if(!s) return; sessionRef = s;
+  const summaryCard = document.getElementById('summaryCard');
+  const reconCard = document.getElementById('reconCard');
+  const formCard = document.getElementById('formCard');
+  const frame = document.getElementById('workFrame');
+
+  Array.from(document.querySelectorAll('.safari-tab')).forEach(el => el.addEventListener('click', async () => {
+    setActiveTab(el);
+    const mode = el.getAttribute('data-mode');
+    if (mode === 'summary') {
+      formCard.classList.add('hidden');
+      summaryCard.classList.remove('hidden');
+      reconCard.classList.remove('hidden');
+      await loadSummary();
+      return;
+    }
+    summaryCard.classList.add('hidden');
+    reconCard.classList.add('hidden');
+    formCard.classList.remove('hidden');
+    frame.src = el.getAttribute('data-page');
+  }));
+})();
+</script></body></html>

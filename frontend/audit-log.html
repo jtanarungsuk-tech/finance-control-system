@@ -1,0 +1,15 @@
+<!doctype html><html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Audit Log</title><link rel="stylesheet" href="styles.css"></head><body>
+<div class="container"><div class="card"><h3>หน้าตรวจสอบการใช้งาน (Audit Log)</h3><div class="table-wrap"><table><thead><tr><th>เวลา</th><th>User</th><th>Role</th><th>Action</th><th>Table</th><th>Record</th><th>Note</th></tr></thead><tbody id="tb"></tbody></table></div></div></div>
+<script src="config.js"></script><script src="api.js"></script><script src="app.js"></script>
+<script>
+(function forceOwner(){
+  const s=getSession();
+  if(!s || s.role!=='owner') localStorage.setItem('fcs_session', JSON.stringify({email:'owner@local',role:'owner',branch:'MAIN'}));
+})();
+(async function(){
+  const s=requireSession(['owner']); if(!s) return;
+  const rows=await API.get('getAuditLogs',{role:s.role,user:s.email,limit:200});
+  const tb=document.getElementById('tb');
+  rows.forEach(r=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${r[1]||r.timestamp}</td><td>${r[2]||r.user}</td><td>${r[3]||r.role}</td><td>${r[4]||r.action}</td><td>${r[5]||r.table}</td><td>${r[6]||r.record_id}</td><td>${r[9]||r.note||''}</td>`;tb.appendChild(tr);});
+})();
+</script></body></html>

@@ -1,0 +1,166 @@
+<!doctype html><html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Owner Dashboard</title><link rel="stylesheet" href="styles.css"></head><body>
+<div class="topbar"><div class="brand">Owner Dashboard</div></div>
+<div class="container" id="appRoot">
+  <div class="card" id="sysMsg">กำลังโหลดข้อมูล...</div>
+
+  <div class="safari-tabs" id="ownerTabs">
+    <a class="safari-tab active" href="#" data-mode="dashboard">Dashboard แสดงผล</a>
+    <a class="safari-tab" href="#" data-mode="frame" data-page="owner-cancel-approval.html">อนุมัติยกเลิกบิล</a>
+    <a class="safari-tab" href="#" data-mode="frame" data-page="employee-dashboard.html">ดูแดชบอร์ดพนักงาน</a>
+    <a class="safari-tab" href="#" data-mode="frame" data-page="connect-backend.html">เชื่อมต่อระบบหลังบ้าน</a>
+  </div>
+
+  <div id="dashboardArea">
+    <div class="card">
+      <h3>ภาพรวมการเงิน</h3>
+      <div class="grid">
+        <div><label>จากวันที่</label><input type="date" id="from_date"></div>
+        <div><label>ถึงวันที่</label><input type="date" id="to_date"></div>
+        <div><label>&nbsp;</label><button id="applyRange">แสดงผลช่วงวันที่</button></div>
+      </div>
+      <div class="grid" style="margin-top:10px;">
+        <div><div class="small">Sales</div><div id="sales_total" class="kpi">-</div></div>
+        <div><div class="small">Cash</div><div id="cash" class="kpi">-</div></div>
+        <div><div class="small">Transfer</div><div id="transfer" class="kpi">-</div></div>
+        <div><div class="small">Credit</div><div id="credit" class="kpi">-</div></div>
+        <div><div class="small">Expenses</div><div id="expenses" class="kpi">-</div></div>
+        <div><div class="small">Deposits</div><div id="deposits" class="kpi">-</div></div>
+        <div><div class="small">Drawer Balance</div><div id="drawer_balance" class="kpi">-</div></div>
+        <div><div class="small">Expected Cash</div><div id="expected_cash" class="kpi">-</div></div>
+        <div><div class="small">Actual Cash</div><div id="actual_cash" class="kpi">-</div></div>
+        <div><div class="small">Difference</div><div id="difference" class="kpi">-</div></div>
+        <div><div class="small">Recon Status</div><div id="recon_status" class="kpi">-</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>รายการเงินขาด/เกินล่าสุด</h3>
+      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th>สาขา</th><th>พนักงาน</th><th>เงินสดควรเหลือ</th><th>เงินสดนับจริง</th><th>ผลต่าง</th><th>สถานะ</th><th>สาเหตุ</th></tr></thead><tbody id="recon_tb"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="frameArea"><h3>เครื่องมือผู้บริหาร</h3><iframe id="ownerFrame" src="owner-cancel-approval.html" style="width:100%;min-height:680px;border:0;border-radius:10px;"></iframe></div>
+</div>
+<script src="app.js"></script>
+<script>
+(function(){
+  const safeSet = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const thb = (n) => new Intl.NumberFormat('th-TH', {style:'currency', currency:'THB'}).format(Number(n || 0));
+  const statusLabel = { MATCHED: 'ตรงยอด', SHORT: 'เงินขาด', OVER: 'เงินเกิน' };
+  const statusCls = { MATCHED: 'ok', SHORT: 'bad', OVER: 'warn' };
+
+  function msg(t){ const el=document.getElementById('sysMsg'); if(el) el.textContent=t; }
+  function getDB(){ try { const raw=localStorage.getItem('fcs_db_v1'); return raw?JSON.parse(raw):null; } catch { return null; } }
+  function saveDB(db){ localStorage.setItem('fcs_db_v1', JSON.stringify(db)); }
+  function today(){ return new Date().toISOString().slice(0,10); }
+  function between(d,f,t){ return (!f||d>=f)&&(!t||d<=t); }
+  function sum(rows,key){ return rows.reduce((a,r)=>a+Number(r[key]||0),0); }
+
+  function ensureData(){
+    let db=getDB();
+    if(!db){
+      db={ DAILY_SALES:[], EXPENSES:[], DEPOSITS:[], RECEIVABLES:[], CANCEL_REQUESTS:[], CASH_RECON:[], ATTACHMENTS:[], AUDIT_LOG:[], SETTINGS:{DRAWER_BALANCE:'500'} };
+    }
+    if((db.DAILY_SALES||[]).length===0){
+      const d=today();
+      db.DAILY_SALES=[{record_id:'SAL-BOOT',entry_date:d,branch:'MAIN',created_by:'A',cash_amount:10000,transfer_amount:4000,credit_amount:1000,total_sales:15000,drawer_balance:500}];
+      db.EXPENSES=[{record_id:'EXP-BOOT',entry_date:d,branch:'MAIN',created_by:'A',amount:1200}];
+      db.DEPOSITS=[{record_id:'DEP-BOOT',entry_date:d,branch:'MAIN',created_by:'A',deposit_amount:6000,coin_balance:0}];
+      db.CASH_RECON=[{record_id:'RECASH-BOOT',entry_date:d,branch:'MAIN',created_by:'A',expected_cash:2800,actual_cash:2750,difference:-50,recon_status:'SHORT',difference_reason:'เศษเหรียญ'}];
+      db.SETTINGS = db.SETTINGS || {}; db.SETTINGS.DRAWER_BALANCE='500';
+      msg('พร้อมใช้งาน: สร้างข้อมูลตัวอย่างให้อัตโนมัติแล้ว');
+    } else {
+      msg('พร้อมใช้งาน');
+    }
+    saveDB(db);
+    return db;
+  }
+
+  function renderDashboard(){
+    const db = ensureData();
+    const f = document.getElementById('from_date')?.value || '';
+    const t = document.getElementById('to_date')?.value || '';
+
+    const sales=(db.DAILY_SALES||[]).filter(r=>between(r.entry_date,f,t));
+    const exps=(db.EXPENSES||[]).filter(r=>between(r.entry_date,f,t));
+    const deps=(db.DEPOSITS||[]).filter(r=>between(r.entry_date,f,t));
+    const recs=(db.CASH_RECON||[]).filter(r=>between(r.entry_date,f,t));
+
+    const salesTotal=sum(sales,'total_sales');
+    const cash=sum(sales,'cash_amount');
+    const transfer=sum(sales,'transfer_amount');
+    const credit=sum(sales,'credit_amount');
+    const expenses=sum(exps,'amount');
+    const deposits=sum(deps,'deposit_amount');
+    const expected=cash-expenses-deposits;
+
+    const last=recs.length?recs[recs.length-1]:null;
+    const actual=last?Number(last.actual_cash||0):0;
+    const diff=last?Number(last.difference||0):(actual-expected);
+    const st=last?String(last.recon_status||'MATCHED'):(diff===0?'MATCHED':(diff<0?'SHORT':'OVER'));
+
+    safeSet('sales_total', thb(salesTotal));
+    safeSet('cash', thb(cash));
+    safeSet('transfer', thb(transfer));
+    safeSet('credit', thb(credit));
+    safeSet('expenses', thb(expenses));
+    safeSet('deposits', thb(deposits));
+    safeSet('drawer_balance', thb((db.SETTINGS&&db.SETTINGS.DRAWER_BALANCE)||0));
+    safeSet('expected_cash', thb(expected));
+    safeSet('actual_cash', thb(actual));
+    safeSet('difference', thb(diff));
+
+    const stEl=document.getElementById('recon_status');
+    if(stEl){ stEl.className='kpi '+(statusCls[st]||''); stEl.textContent=statusLabel[st]||st; }
+    const dfEl=document.getElementById('difference');
+    if(dfEl){ dfEl.className='kpi '+(statusCls[st]||''); }
+
+    const tb=document.getElementById('recon_tb');
+    if(tb){
+      tb.innerHTML='';
+      recs.filter(r=>Number(r.difference||0)!==0).slice(-10).reverse().forEach(r=>{
+        const tr=document.createElement('tr');
+        const rc = r.recon_status==='SHORT' ? 'status-rejected' : (r.recon_status==='OVER' ? 'status-pending' : '');
+        tr.innerHTML=`<td>${r.entry_date||''}</td><td>${r.branch||''}</td><td>${r.created_by||''}</td><td>${thb(r.expected_cash||0)}</td><td>${thb(r.actual_cash||0)}</td><td class="${rc}">${thb(r.difference||0)}</td><td class="${rc}">${statusLabel[r.recon_status]||r.recon_status||''}</td><td>${r.difference_reason||''}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+  }
+
+  function bindTabs(){
+    document.querySelectorAll('#ownerTabs .safari-tab').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.preventDefault();
+        document.querySelectorAll('#ownerTabs .safari-tab').forEach(x=>x.classList.remove('active'));
+        btn.classList.add('active');
+        const mode = btn.getAttribute('data-mode');
+        const dashboard = document.getElementById('dashboardArea');
+        const frame = document.getElementById('frameArea');
+        if(mode==='dashboard'){
+          dashboard.classList.remove('hidden');
+          frame.classList.add('hidden');
+          renderDashboard();
+        } else {
+          dashboard.classList.add('hidden');
+          frame.classList.remove('hidden');
+          document.getElementById('ownerFrame').src = btn.getAttribute('data-page');
+        }
+      });
+    });
+  }
+
+  function boot(){
+    const td=today();
+    const f=document.getElementById('from_date');
+    const t=document.getElementById('to_date');
+    if(f) f.value=td;
+    if(t) t.value=td;
+    document.getElementById('applyRange')?.addEventListener('click', renderDashboard);
+    bindTabs();
+    renderDashboard();
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script></body></html>

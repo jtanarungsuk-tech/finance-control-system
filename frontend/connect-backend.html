@@ -1,0 +1,68 @@
+<!doctype html><html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>เชื่อมต่อระบบหลังบ้าน</title><link rel="stylesheet" href="styles.css"></head><body>
+<div class="topbar"><div class="brand">เชื่อมต่อระบบหลังบ้าน</div></div>
+<div class="container">
+  <div class="card">
+    <h3>Backend Connector</h3>
+    <label>Google Apps Script Web App URL</label>
+    <input id="apiUrl" placeholder="https://script.google.com/macros/s/.../exec">
+    <div class="grid" style="margin-top:10px;">
+      <button id="saveBtn">บันทึกและใช้งาน Remote</button>
+      <button id="clearBtn" class="warning">กลับ Local Mode</button>
+      <button id="testBtn" class="secondary">ทดสอบการเชื่อมต่อ</button>
+      <button id="healthBtn">ตรวจสุขภาพระบบทั้งหมด</button>
+    </div>
+    <p class="small" id="modeInfo"></p>
+    <div class="table-wrap"><table><thead><tr><th>รายการตรวจ</th><th>ผล</th><th>รายละเอียด</th></tr></thead><tbody id="healthTb"></tbody></table></div>
+    <pre id="result" style="white-space:pre-wrap;background:#f1f6ff;padding:12px;border-radius:10px;"></pre>
+    <div class="nav-links">
+      <a href="employee-dashboard.html">ไปหน้าพนักงาน</a>
+      <a href="owner-dashboard.html">ไปหน้าผู้บริหาร</a>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script><script src="api.js"></script><script>
+const el = id => document.getElementById(id);
+function showMode(){ el('modeInfo').textContent = `โหมดปัจจุบัน: ${API.mode.toUpperCase()} ${API.baseUrl ? ' | ' + API.baseUrl : ''}`; }
+function out(v){ el('result').textContent = typeof v === 'string' ? v : JSON.stringify(v,null,2); }
+function row(name, ok, detail){ const tr=document.createElement('tr'); tr.innerHTML=`<td>${name}</td><td class="${ok?'status-approved':'status-rejected'}">${ok?'PASS':'FAIL'}</td><td>${detail||''}</td>`; el('healthTb').appendChild(tr); }
+
+el('apiUrl').value = localStorage.getItem('fcs_api_url') || '';
+showMode();
+el('saveBtn').addEventListener('click',()=> API.setRemoteUrl(el('apiUrl').value));
+el('clearBtn').addEventListener('click',()=> API.setRemoteUrl(''));
+el('testBtn').addEventListener('click', async ()=>{
+  try{
+    const payload = { role:'owner', user:'owner@local', branch:'MAIN', date:new Date().toISOString().slice(0,10) };
+    const d = await API.get('getOwnerDashboard', payload);
+    out({ ok:true, mode:API.mode, ownerDashboard:true, sample:d });
+  }catch(err){ out({ ok:false, mode:API.mode, error:err.message||String(err) }); }
+});
+
+el('healthBtn').addEventListener('click', async ()=>{
+  el('healthTb').innerHTML='';
+  const date = new Date().toISOString().slice(0,10);
+  const base = { role:'owner', user:'owner@local', branch:'MAIN', date };
+  const tests = [
+    { name:'GET getOwnerDashboard', fn:()=>API.get('getOwnerDashboard', base) },
+    { name:'GET getEmployeeDailyDashboard', fn:()=>API.get('getEmployeeDailyDashboard', { role:'employee', user:'employee@local', branch:'MAIN', date }) },
+    { name:'GET getPendingCancelRequests', fn:()=>API.get('getPendingCancelRequests', base) },
+    { name:'GET getAuditLogs', fn:()=>API.get('getAuditLogs', { role:'owner', user:'owner@local', limit:10 }) },
+    { name:'POST createDailySales', fn:()=>API.post('createDailySales', { role:'employee', user:'employee@local', submitted_by:'healthcheck', entry_date:date, branch:'MAIN', cash_amount:1, transfer_amount:0, credit_amount:0, total_sales:1, drawer_balance:500, note:'health' }) },
+    { name:'POST createExpense', fn:()=>API.post('createExpense', { role:'employee', user:'employee@local', submitted_by:'healthcheck', entry_date:date, branch:'MAIN', expense_name:'health', category:'ทั่วไป', amount:1, payment_source:'cash', note:'health' }) },
+    { name:'POST createDeposit', fn:()=>API.post('createDeposit', { role:'employee', user:'employee@local', submitted_by:'healthcheck', entry_date:date, branch:'MAIN', cash_before_deposit:1, deposit_amount:1, bank_account:'health', note:'health' }) },
+    { name:'POST createCashRecon', fn:()=>API.post('createCashRecon', { role:'employee', user:'employee@local', submitted_by:'healthcheck', entry_date:date, branch:'MAIN', actual_cash:0, difference_reason:'นับผิด', note:'health' }) },
+  ];
+
+  let pass = 0;
+  for (const t of tests){
+    try {
+      const r = await t.fn();
+      row(t.name, true, r && r.record_id ? `record_id: ${r.record_id}` : 'ok');
+      pass++;
+    } catch (e) {
+      row(t.name, false, e.message || String(e));
+    }
+  }
+  out({ mode: API.mode, pass, total: tests.length, summary: `${pass}/${tests.length} ผ่าน` });
+});
+</script></body></html>

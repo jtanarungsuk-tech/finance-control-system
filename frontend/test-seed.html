@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seed Test Data</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="topbar"><div class="brand">Seed Test Data</div></div>
+  <div class="container">
+    <div class="card">
+      <h3>สร้างข้อมูลทดสอบสำเร็จ</h3>
+      <p id="msg">กำลังสร้างข้อมูล...</p>
+      <div class="nav-links">
+        <a href="employee-dashboard.html">ดูผลฝั่งพนักงาน</a>
+        <a href="owner-dashboard.html">ดูผลฝั่งผู้บริหาร</a>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const today = new Date().toISOString().slice(0, 10);
+      const db = {
+        DAILY_SALES: [
+          {
+            record_id: 'SAL-DEMO1',
+            created_at: new Date().toISOString(),
+            created_by: 'A',
+            role: 'employee',
+            entry_date: today,
+            branch: 'MAIN',
+            cash_amount: 10000,
+            transfer_amount: 4000,
+            credit_amount: 1000,
+            total_sales: 15000,
+            drawer_balance: 500,
+            note: 'เคสทดสอบ'
+          }
+        ],
+        EXPENSES: [
+          {
+            record_id: 'EXP-DEMO1',
+            created_at: new Date().toISOString(),
+            created_by: 'A',
+            role: 'employee',
+            entry_date: today,
+            branch: 'MAIN',
+            expense_name: 'ค่าน้ำแข็ง',
+            category: 'ทั่วไป',
+            amount: 1200,
+            payment_source: 'cash',
+            note: 'จ่ายเงินสด'
+          }
+        ],
+        DEPOSITS: [
+          {
+            record_id: 'DEP-DEMO1',
+            created_at: new Date().toISOString(),
+            created_by: 'A',
+            role: 'employee',
+            entry_date: today,
+            branch: 'MAIN',
+            cash_before_deposit: 6000,
+            deposit_amount: 6000,
+            coin_balance: 0,
+            bank_account: 'SCB-001',
+            note: 'ฝากหลังปิดยอด'
+          }
+        ],
+        RECEIVABLES: [],
+        CANCEL_REQUESTS: [],
+        CASH_RECON: [
+          {
+            record_id: 'RECASH-DEMO1',
+            created_at: new Date().toISOString(),
+            created_by: 'A',
+            role: 'employee',
+            entry_date: today,
+            branch: 'MAIN',
+            expected_cash: 2800,
+            actual_cash: 2750,
+            difference: -50,
+            recon_status: 'SHORT',
+            difference_reason: 'เศษเหรียญ',
+            note: 'พบเหรียญขาด 20 บาท'
+          }
+        ],
+        ATTACHMENTS: [],
+        AUDIT_LOG: [
+          {
+            log_id: 'LOG-DEMO1',
+            timestamp: new Date().toISOString(),
+            user: 'employee@local',
+            role: 'employee',
+            action: 'CREATE',
+            table: 'CASH_RECON',
+            record_id: 'RECASH-DEMO1',
+            old_value: '',
+            new_value: '{"expected_cash":2800,"actual_cash":2750,"difference":-50,"recon_status":"SHORT","difference_reason":"เศษเหรียญ","submitted_by":"A"}',
+            note: 'Create cash recon'
+          }
+        ],
+        SETTINGS: { ALLOW_SELF_REGISTER: 'true', OWNER_EMAILS: '', EMPLOYEE_EMAILS: '', DRAWER_BALANCE: '500' }
+      };
+
+      localStorage.setItem('fcs_db_v1', JSON.stringify(db));
+      localStorage.setItem('fcs_session', JSON.stringify({ email: 'employee@local', role: 'employee', branch: 'MAIN' }));
+      document.getElementById('msg').textContent = 'สร้างข้อมูลวันที่ ' + today + ' เรียบร้อยแล้ว';
+    })();
+  </script>
+</body>
+</html>
