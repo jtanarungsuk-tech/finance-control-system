@@ -53,6 +53,7 @@
   function today(){ return new Date().toISOString().slice(0,10); }
   function toDate(s){ return new Date(s + 'T00:00:00'); }
   function fmtDate(d){ return d.toISOString().slice(0,10); }
+  function safeJsonParse(x){ try { return JSON.parse(x); } catch { return null; } }
   function listDates(fromDate, toDate) {
     const out = [];
     const cur = new Date(fromDate);
@@ -61,6 +62,52 @@
       cur.setDate(cur.getDate() + 1);
     }
     return out;
+  }
+
+  async function aggregateFromAuditFallback(s, from, to) {
+    const logs = await API.get('getAuditLogs', {
+      role: s.role,
+      user: s.email,
+      limit: 500
+    });
+    let salesTotal = 0, cash = 0, transfer = 0, credit = 0, expenses = 0, deposits = 0, expected = 0, actual = 0, difference = 0;
+    for (const row of (logs || [])) {
+      const action = String(row[4] || '');
+      const table = String(row[5] || '');
+      if (action !== 'CREATE') continue;
+      const payload = safeJsonParse(row[8] || '');
+      if (!payload) continue;
+
+      if ((table === 'DAILY_SALES' || table === 'EXPENSES' || table === 'DEPOSITS') && Array.isArray(payload)) {
+        const entryDate = String(payload[4] || '');
+        if (entryDate < from || entryDate > to) continue;
+        if (table === 'DAILY_SALES') {
+          cash += Number(payload[6] || 0);
+          transfer += Number(payload[7] || 0);
+          credit += Number(payload[8] || 0);
+          salesTotal += Number(payload[9] || 0);
+        } else if (table === 'EXPENSES') {
+          expenses += Number(payload[8] || 0);
+        } else if (table === 'DEPOSITS') {
+          deposits += Number(payload[7] || 0);
+        }
+      }
+
+      if (table === 'CASH_RECON' && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        const ts = String(payload.timestamp || '').slice(0, 10);
+        if (ts >= from && ts <= to) {
+          expected += Number(payload.expected_cash || 0);
+          actual += Number(payload.actual_cash || 0);
+          difference += Number(payload.difference || 0);
+        }
+      }
+    }
+    if (expected === 0 && actual === 0 && difference === 0) {
+      expected = cash - expenses - deposits;
+      actual = expected;
+      difference = 0;
+    }
+    return { salesTotal, cash, transfer, credit, expenses, deposits, expected, actual, difference };
   }
 
   async function renderDashboard(){
@@ -81,15 +128,29 @@
     })));
 
     const sum = (key) => rows.reduce((acc, r) => acc + Number(r[key] || 0), 0);
-    const salesTotal = sum('sales_today');
-    const cash = sum('cash');
-    const transfer = sum('transfer');
-    const credit = sum('credit');
-    const expenses = sum('expenses');
-    const deposits = sum('deposits');
-    const expected = sum('expected_cash');
-    const actual = sum('actual_cash');
-    const difference = sum('difference');
+    let salesTotal = sum('sales_today');
+    let cash = sum('cash');
+    let transfer = sum('transfer');
+    let credit = sum('credit');
+    let expenses = sum('expenses');
+    let deposits = sum('deposits');
+    let expected = sum('expected_cash');
+    let actual = sum('actual_cash');
+    let difference = sum('difference');
+
+    // Fallback: if backend date comparison fails, aggregate directly from audit logs.
+    if (salesTotal === 0 && cash === 0 && transfer === 0 && credit === 0 && expenses === 0 && deposits === 0) {
+      const fb = await aggregateFromAuditFallback(s, from, to);
+      salesTotal = fb.salesTotal;
+      cash = fb.cash;
+      transfer = fb.transfer;
+      credit = fb.credit;
+      expenses = fb.expenses;
+      deposits = fb.deposits;
+      expected = fb.expected;
+      actual = fb.actual;
+      difference = fb.difference;
+    }
     const drawerBalance = rows.length ? Number(rows[rows.length - 1].drawer_balance || 0) : 0;
     const st = difference === 0 ? 'MATCHED' : (difference < 0 ? 'SHORT' : 'OVER');
 
