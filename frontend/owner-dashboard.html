@@ -302,14 +302,17 @@
 
   function boot(){
     ensureOwnerSession();
-    const td=today();
+    const s = getSession();
     const f=document.getElementById('from_date');
     const t=document.getElementById('to_date');
-    if(f) f.value=td;
-    if(t) t.value=td;
+    (async () => {
+      const td = await findLatestDataDate(s, 30);
+      if(f && !f.value) f.value=td;
+      if(t && !t.value) t.value=td;
+      renderDashboard().catch((e)=>msg('โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e)));
+    })();
     document.getElementById('applyRange')?.addEventListener('click', async ()=>{ try { await renderDashboard(); } catch (e) { msg('โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e)); } });
     bindTabs();
-    renderDashboard().catch((e)=>msg('โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e)));
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);

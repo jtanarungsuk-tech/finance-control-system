@@ -23,6 +23,33 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function shiftDateStr(baseDate, days) {
+  const d = new Date(baseDate + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+async function findLatestDataDate(session, maxBackDays = 14) {
+  const base = todayStr();
+  for (let i = 0; i <= maxBackDays; i++) {
+    const date = shiftDateStr(base, -i);
+    try {
+      const d = await API.get('getEmployeeDailyDashboard', {
+        role: session.role,
+        user: session.email,
+        branch: session.branch || 'MAIN',
+        date
+      });
+      const t = d && d.totals ? d.totals : {};
+      const hasTotals = Number(t.total_sales || 0) > 0 || Number(t.expense || 0) > 0 || Number(t.deposit || 0) > 0;
+      const e = d && d.entries ? d.entries : {};
+      const hasRows = (e.sales || []).length || (e.expenses || []).length || (e.deposits || []).length || (e.cash_recon || []).length;
+      if (hasTotals || hasRows) return date;
+    } catch (_) {}
+  }
+  return base;
+}
+
 function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;

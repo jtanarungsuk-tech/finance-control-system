@@ -34,11 +34,12 @@
 <script src="config.js"></script><script src="api.js"></script><script src="app.js"></script>
 <script>
 let sessionRef = null;
+let dashboardDate = null;
 const statusLabel = { MATCHED: 'ตรงยอด', SHORT: 'เงินขาด', OVER: 'เงินเกิน' };
 const statusClass = { MATCHED: 'ok', SHORT: 'bad', OVER: 'warn' };
 
 async function loadSummary() {
-  const d = await API.get('getEmployeeDailyDashboard',{role:sessionRef.role,user:sessionRef.email,branch:sessionRef.branch,date:todayStr()});
+  const d = await API.get('getEmployeeDailyDashboard',{role:sessionRef.role,user:sessionRef.email,branch:sessionRef.branch,date:dashboardDate || todayStr()});
   const t=d.totals;
   setText('k_total',thb(t.total_sales)); setText('k_cash',thb(t.cash)); setText('k_transfer',thb(t.transfer)); setText('k_credit',thb(t.credit)); setText('k_expense',thb(t.expense)); setText('k_deposit',thb(t.deposit)); setText('k_drawer',thb(t.drawer_balance));
   setText('r_expected', thb(t.expected_cash)); setText('r_actual', thb(t.actual_cash)); setText('r_diff', thb(t.difference));
@@ -58,6 +59,7 @@ function setActiveTab(el) {
 
 (async function(){
   const s = requireSession(['employee','owner']); if(!s) return; sessionRef = s;
+  dashboardDate = await findLatestDataDate(sessionRef, 30);
   const summaryCard = document.getElementById('summaryCard');
   const reconCard = document.getElementById('reconCard');
   const formCard = document.getElementById('formCard');
