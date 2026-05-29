@@ -54,27 +54,22 @@
   function toDate(s){ return new Date(s + 'T00:00:00'); }
   function fmtDate(d){ return d.toISOString().slice(0,10); }
   function safeJsonParse(x){ try { return JSON.parse(x); } catch { return null; } }
-  function listDates(fromDate, toDate) {
-    const out = [];
-    const cur = new Date(fromDate);
-    while (cur <= toDate) {
-      out.push(fmtDate(cur));
-      cur.setDate(cur.getDate() + 1);
-    }
-    return out;
-  }
-
-  async function aggregateFromAuditFallback(s, from, to) {
+  async function aggregateFromAudit(s, from, to) {
     const logs = await API.get('getAuditLogs', {
       role: s.role,
       user: s.email,
       limit: 500
     });
     let salesTotal = 0, cash = 0, transfer = 0, credit = 0, expenses = 0, deposits = 0, expected = 0, actual = 0, difference = 0;
+    const seen = new Set();
+    const reconRows = [];
     for (const row of (logs || [])) {
       const action = String(row[4] || '');
       const table = String(row[5] || '');
+      const recordId = String(row[6] || '');
       if (action !== 'CREATE') continue;
+      if (recordId && seen.has(recordId)) continue;
+      if (recordId) seen.add(recordId);
       const payload = safeJsonParse(row[8] || '');
       if (!payload) continue;
 
@@ -96,9 +91,22 @@
       if (table === 'CASH_RECON' && payload && typeof payload === 'object' && !Array.isArray(payload)) {
         const ts = String(payload.timestamp || '').slice(0, 10);
         if (ts >= from && ts <= to) {
-          expected += Number(payload.expected_cash || 0);
-          actual += Number(payload.actual_cash || 0);
-          difference += Number(payload.difference || 0);
+          const exp = Number(payload.expected_cash || 0);
+          const act = Number(payload.actual_cash || 0);
+          const diff = Number(payload.difference || 0);
+          expected += exp;
+          actual += act;
+          difference += diff;
+          reconRows.push({
+            entry_date: ts,
+            branch: 'MAIN',
+            employee: String(payload.submitted_by || ''),
+            expected_cash: exp,
+            actual_cash: act,
+            difference: diff,
+            recon_status: diff === 0 ? 'MATCHED' : (diff < 0 ? 'SHORT' : 'OVER'),
+            difference_reason: String(payload.difference_reason || '')
+          });
         }
       }
     }
@@ -107,51 +115,31 @@
       actual = expected;
       difference = 0;
     }
-    return { salesTotal, cash, transfer, credit, expenses, deposits, expected, actual, difference };
+    return { salesTotal, cash, transfer, credit, expenses, deposits, expected, actual, difference, reconRows };
   }
 
   async function renderDashboard(){
     const s = getSession();
     if (!s) return;
+    const applyBtn = document.getElementById('applyRange');
     const to = document.getElementById('to_date')?.value || today();
     const from = document.getElementById('from_date')?.value || to;
     const fromObj = toDate(from);
     const toObj = toDate(to);
     if (fromObj > toObj) throw new Error('ช่วงวันที่ไม่ถูกต้อง (จากวันที่ต้องไม่มากกว่า ถึงวันที่)');
-
-    const dates = listDates(fromObj, toObj);
-    const rows = await Promise.all(dates.map((date) => API.get('getOwnerDashboard', {
-      role: s.role,
-      user: s.email,
-      branch: s.branch || 'MAIN',
-      date
-    })));
-
-    const sum = (key) => rows.reduce((acc, r) => acc + Number(r[key] || 0), 0);
-    let salesTotal = sum('sales_today');
-    let cash = sum('cash');
-    let transfer = sum('transfer');
-    let credit = sum('credit');
-    let expenses = sum('expenses');
-    let deposits = sum('deposits');
-    let expected = sum('expected_cash');
-    let actual = sum('actual_cash');
-    let difference = sum('difference');
-
-    // Fallback: if backend date comparison fails, aggregate directly from audit logs.
-    if (salesTotal === 0 && cash === 0 && transfer === 0 && credit === 0 && expenses === 0 && deposits === 0) {
-      const fb = await aggregateFromAuditFallback(s, from, to);
-      salesTotal = fb.salesTotal;
-      cash = fb.cash;
-      transfer = fb.transfer;
-      credit = fb.credit;
-      expenses = fb.expenses;
-      deposits = fb.deposits;
-      expected = fb.expected;
-      actual = fb.actual;
-      difference = fb.difference;
-    }
-    const drawerBalance = rows.length ? Number(rows[rows.length - 1].drawer_balance || 0) : 0;
+    if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'กำลังคำนวณ...'; }
+    try {
+    const agg = await aggregateFromAudit(s, from, to);
+    const salesTotal = agg.salesTotal;
+    const cash = agg.cash;
+    const transfer = agg.transfer;
+    const credit = agg.credit;
+    const expenses = agg.expenses;
+    const deposits = agg.deposits;
+    const expected = agg.expected;
+    const actual = agg.actual;
+    const difference = agg.difference;
+    const drawerBalance = 500;
     const st = difference === 0 ? 'MATCHED' : (difference < 0 ? 'SHORT' : 'OVER');
 
     msg(`พร้อมใช้งาน (เชื่อมต่อออนไลน์แล้ว) | แสดงผลช่วง ${from} ถึง ${to}`);
@@ -171,10 +159,7 @@
     const dfEl = document.getElementById('difference');
     if (dfEl) dfEl.className = 'kpi ' + (statusCls[st] || '');
 
-    const reconItems = rows
-      .flatMap((r) => r.latest_recon_variances || [])
-      .map((r) => ({ ...r, entry_date: String(r.entry_date || '').slice(0, 10) }))
-      .filter((r) => r && r.entry_date >= from && r.entry_date <= to);
+    const reconItems = (agg.reconRows || []).filter((r) => r.entry_date >= from && r.entry_date <= to);
     const reconUnique = Array.from(
       new Map(
         reconItems.map((r) => [
@@ -205,6 +190,9 @@
         tr.innerHTML = `<td>${r.entry_date || ''}</td><td>${r.branch || ''}</td><td>${r.employee || ''}</td><td>${thb(r.expected_cash || 0)}</td><td>${thb(r.actual_cash || 0)}</td><td class="${rc}">${thb(r.difference || 0)}</td><td class="${rc}">${statusLabel[r.recon_status] || r.recon_status || ''}</td><td>${r.difference_reason || ''}</td>`;
         tb.appendChild(tr);
       });
+    }
+    } finally {
+      if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'แสดงผลช่วงวันที่'; }
     }
   }
 
