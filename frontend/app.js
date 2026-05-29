@@ -1,6 +1,8 @@
 function getSession() {
   const raw = localStorage.getItem('fcs_session');
-  if (raw) return JSON.parse(raw);
+  if (raw) {
+    try { return JSON.parse(raw); } catch (_) { localStorage.removeItem('fcs_session'); }
+  }
   const guest = { email: 'employee@local', role: 'employee', branch: 'MAIN' };
   localStorage.setItem('fcs_session', JSON.stringify(guest));
   return guest;

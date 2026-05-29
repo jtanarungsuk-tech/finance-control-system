@@ -45,7 +45,10 @@
   }
   function loadDB() {
     const raw = localStorage.getItem(DB_KEY);
-    if (raw) return applySeedIfEmpty(JSON.parse(raw));
+    if (raw) {
+      try { return applySeedIfEmpty(JSON.parse(raw)); }
+      catch (_) { localStorage.removeItem(DB_KEY); }
+    }
     const db = {
       DAILY_SALES: [], EXPENSES: [], DEPOSITS: [], RECEIVABLES: [], CANCEL_REQUESTS: [], CASH_RECON: [], ATTACHMENTS: [], AUDIT_LOG: [],
       SETTINGS: { ALLOW_SELF_REGISTER: 'true', OWNER_EMAILS: '', EMPLOYEE_EMAILS: '', DRAWER_BALANCE: '0' }
