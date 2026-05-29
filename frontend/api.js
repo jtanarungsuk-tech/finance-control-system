@@ -7,13 +7,40 @@
   const useRemote = !!baseUrl && !baseUrl.includes(PLACEHOLDER);
 
   const DB_KEY = 'fcs_db_v1';
+  function applySeedIfEmpty(db) {
+    if ((db.DAILY_SALES || []).length) return db;
+    const dates = ['2026-05-25', '2026-05-26', '2026-05-27', '2026-05-28', '2026-05-29'];
+    const sales = [
+      [4200, 1600, 700, 6500],
+      [4600, 1900, 500, 7000],
+      [5000, 1700, 800, 7500],
+      [5400, 2100, 900, 8400],
+      [5800, 2300, 1100, 9200]
+    ];
+    const expenses = [400, 700, 650, 900, 800];
+    const deposits = [3000, 3100, 3500, 3600, 4000];
+    const actuals = [3800, 3880, 4370, 4500, 4950];
+    dates.forEach((d, i) => {
+      const s = sales[i];
+      db.DAILY_SALES.push({ record_id: `SAL-${d.replace(/-/g, '')}`, created_at: `${d}T09:00:00+07:00`, created_by: 'AutoSeed', role: 'owner', entry_date: d, branch: 'MAIN', cash_amount: s[0], transfer_amount: s[1], credit_amount: s[2], total_sales: s[3], drawer_balance: 500, note: 'seed' });
+      db.EXPENSES.push({ record_id: `EXP-${d.replace(/-/g, '')}`, created_at: `${d}T11:00:00+07:00`, created_by: 'AutoSeed', role: 'owner', entry_date: d, branch: 'MAIN', expense_name: 'ค่าใช้จ่ายทดสอบ', category: 'ทั่วไป', amount: expenses[i], payment_source: 'cash', note: 'seed' });
+      const coin = s[0] - deposits[i];
+      db.DEPOSITS.push({ record_id: `DEP-${d.replace(/-/g, '')}`, created_at: `${d}T17:30:00+07:00`, created_by: 'AutoSeed', role: 'owner', entry_date: d, branch: 'MAIN', cash_before_deposit: s[0], deposit_amount: deposits[i], coin_balance: coin, bank_account: 'SCB-1234', note: 'seed' });
+      const expected = s[0] - expenses[i] - deposits[i];
+      const diff = actuals[i] - expected;
+      db.CASH_RECON.push({ record_id: `RECASH-${d.replace(/-/g, '')}`, created_at: `${d}T22:00:00+07:00`, created_by: 'AutoSeed', role: 'owner', entry_date: d, branch: 'MAIN', expected_cash: expected, actual_cash: actuals[i], difference: diff, recon_status: reconStatus(diff), difference_reason: diff === 0 ? '' : (diff < 0 ? 'เศษเหรียญ' : 'นับผิด'), note: 'seed' });
+    });
+    db.SETTINGS.DRAWER_BALANCE = '500';
+    return db;
+  }
   function loadDB() {
     const raw = localStorage.getItem(DB_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return applySeedIfEmpty(JSON.parse(raw));
     const db = {
       DAILY_SALES: [], EXPENSES: [], DEPOSITS: [], RECEIVABLES: [], CANCEL_REQUESTS: [], CASH_RECON: [], ATTACHMENTS: [], AUDIT_LOG: [],
       SETTINGS: { ALLOW_SELF_REGISTER: 'true', OWNER_EMAILS: '', EMPLOYEE_EMAILS: '', DRAWER_BALANCE: '0' }
     };
+    applySeedIfEmpty(db);
     localStorage.setItem(DB_KEY, JSON.stringify(db));
     return db;
   }
@@ -195,22 +222,35 @@
     },
     async get(action, params = {}) {
       if (!useRemote) return localGet(action, params);
-      const query = new URLSearchParams({ action, ...params }).toString();
-      const res = await fetch(`${baseUrl}?${query}`);
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || 'API Error');
-      return json.data;
+      try {
+        const query = new URLSearchParams({ action, ...params }).toString();
+        const res = await fetch(`${baseUrl}?${query}`, { method: 'GET', redirect: 'follow' });
+        const text = await res.text();
+        let json = null;
+        try { json = JSON.parse(text); } catch (_) { json = null; }
+        if (!json || !json.ok) throw new Error((json && json.error) || 'Remote API Error');
+        return json.data;
+      } catch (_) {
+        return localGet(action, params);
+      }
     },
     async post(action, payload = {}) {
       if (!useRemote) return localPost(action, payload);
-      const res = await fetch(baseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...payload })
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || 'API Error');
-      return json.data;
+      try {
+        const res = await fetch(baseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, ...payload }),
+          redirect: 'follow'
+        });
+        const text = await res.text();
+        let json = null;
+        try { json = JSON.parse(text); } catch (_) { json = null; }
+        if (!json || !json.ok) throw new Error((json && json.error) || 'Remote API Error');
+        return json.data;
+      } catch (_) {
+        return localPost(action, payload);
+      }
     }
   };
 })();
