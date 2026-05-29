@@ -175,11 +175,28 @@
       .flatMap((r) => r.latest_recon_variances || [])
       .map((r) => ({ ...r, entry_date: String(r.entry_date || '').slice(0, 10) }))
       .filter((r) => r && r.entry_date >= from && r.entry_date <= to);
+    const reconUnique = Array.from(
+      new Map(
+        reconItems.map((r) => [
+          [
+            r.entry_date || '',
+            r.branch || '',
+            r.employee || '',
+            Number(r.expected_cash || 0),
+            Number(r.actual_cash || 0),
+            Number(r.difference || 0),
+            r.recon_status || '',
+            r.difference_reason || ''
+          ].join('|'),
+          r
+        ])
+      ).values()
+    );
 
     const tb = document.getElementById('recon_tb');
     if (tb) {
       tb.innerHTML = '';
-      reconItems
+      reconUnique
         .sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)))
         .slice(0, 100)
         .forEach(r => {
