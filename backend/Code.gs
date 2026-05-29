@@ -433,7 +433,8 @@ function getOwnerDashboard_(user, query) {
   const receivableBalance = scopedByBranch_(receivables, 5, branch).reduce((a, r) => a + toNumber_(r[9]), 0);
   const expected = cash - expenseToday - depositToday;
 
-  const reconsToday = filterRows_(recons, (r) => r[4] === date && (!branch || r[5] === branch));
+  const targetDate = normalizeDate_(date);
+  const reconsToday = filterRows_(recons, (r) => normalizeDate_(r[4]) === targetDate && (!branch || r[5] === branch));
   const actual = reconsToday.length ? toNumber_(reconsToday[reconsToday.length - 1][7]) : 0;
   const diff = reconsToday.length ? toNumber_(reconsToday[reconsToday.length - 1][8]) : 0;
   const reconStatus = reconsToday.length ? String(reconsToday[reconsToday.length - 1][9]) : getReconStatus_(diff);
@@ -579,7 +580,8 @@ function getRows_(sheetName) {
 }
 
 function filterByDateBranch_(sheetName, date, branch) {
-  return filterRows_(getRows_(sheetName), (r) => r[4] === date && r[5] === branch);
+  const targetDate = normalizeDate_(date);
+  return filterRows_(getRows_(sheetName), (r) => normalizeDate_(r[4]) === targetDate && String(r[5] || '') === String(branch || ''));
 }
 
 function filterRows_(rows, predicate) {
@@ -596,13 +598,16 @@ function sumIndex_(rows, index) {
 }
 
 function sumByDate_(rows, dateIndex, valueIndex, date) {
-  return rows.reduce((acc, r) => (r[dateIndex] === date ? acc + toNumber_(r[valueIndex]) : acc), 0);
+  const targetDate = normalizeDate_(date);
+  return rows.reduce((acc, r) => (normalizeDate_(r[dateIndex]) === targetDate ? acc + toNumber_(r[valueIndex]) : acc), 0);
 }
 
 function sumByDateRange_(rows, dateIndex, valueIndex, startDate, endDate) {
+  const start = startOfDay_(startDate);
+  const end = endOfDay_(endDate);
   return rows.reduce((acc, r) => {
-    const d = new Date(r[dateIndex] + 'T00:00:00');
-    if (d >= startDate && d <= endDate) return acc + toNumber_(r[valueIndex]);
+    const d = parseDate_(r[dateIndex]);
+    if (d && d >= start && d <= end) return acc + toNumber_(r[valueIndex]);
     return acc;
   }, 0);
 }
@@ -629,6 +634,36 @@ function startOfWeek_(d) {
   const diff = (day === 0 ? -6 : 1) - day;
   x.setDate(x.getDate() + diff);
   x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function parseDate_(v) {
+  if (v instanceof Date) {
+    return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  }
+  const s = String(v || '').trim();
+  if (!s) return null;
+  const datePart = s.slice(0, 10);
+  const d = new Date(datePart + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function normalizeDate_(v) {
+  const d = parseDate_(v);
+  if (!d) return '';
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function startOfDay_(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfDay_(d) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
   return x;
 }
 

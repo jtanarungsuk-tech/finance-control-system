@@ -10,7 +10,9 @@
   const configuredUrl = looksLikeGasWebAppUrl(configuredRaw) ? configuredRaw.trim() : '';
   const apiUrlFromConfig = looksLikeGasWebAppUrl(configRaw) ? configRaw.trim() : '';
   const baseUrl = configuredUrl || apiUrlFromConfig || PROD_API_URL;
-  const useRemote = !!baseUrl && !baseUrl.includes(PLACEHOLDER);
+  const forceLocal = (typeof window !== 'undefined' && window.FCS_FORCE_LOCAL === true) ||
+    (typeof location !== 'undefined' && /(?:\?|&)local=1(?:&|$)/.test(String(location.search || '')));
+  const useRemote = !forceLocal && !!baseUrl && !baseUrl.includes(PLACEHOLDER);
   if (configuredRaw && !configuredUrl) {
     // Drop invalid cached endpoint automatically to prevent "no data" from bad local settings.
     localStorage.removeItem('fcs_api_url');
