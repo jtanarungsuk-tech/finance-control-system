@@ -44,6 +44,7 @@
 <script src="config.js"></script><script src="api.js"></script><script src="app.js"></script>
 <script>
 (function(){
+  let rendering = false;
   const safeSet = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   const thb = (n) => new Intl.NumberFormat('th-TH', {style:'currency', currency:'THB'}).format(Number(n || 0));
   const statusLabel = { MATCHED: 'ตรงยอด', SHORT: 'เงินขาด', OVER: 'เงินเกิน' };
@@ -119,6 +120,7 @@
   }
 
   async function renderDashboard(){
+    if (rendering) return;
     const s = getSession();
     if (!s) return;
     const applyBtn = document.getElementById('applyRange');
@@ -127,6 +129,7 @@
     const fromObj = toDate(from);
     const toObj = toDate(to);
     if (fromObj > toObj) throw new Error('ช่วงวันที่ไม่ถูกต้อง (จากวันที่ต้องไม่มากกว่า ถึงวันที่)');
+    rendering = true;
     if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'กำลังคำนวณ...'; }
     try {
     const agg = await aggregateFromAudit(s, from, to);
@@ -165,13 +168,7 @@
         reconItems.map((r) => [
           [
             r.entry_date || '',
-            r.branch || '',
-            r.employee || '',
-            Number(r.expected_cash || 0),
-            Number(r.actual_cash || 0),
-            Number(r.difference || 0),
-            r.recon_status || '',
-            r.difference_reason || ''
+            r.branch || ''
           ].join('|'),
           r
         ])
@@ -193,6 +190,7 @@
     }
     } finally {
       if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'แสดงผลช่วงวันที่'; }
+      rendering = false;
     }
   }
 
