@@ -66,140 +66,46 @@
   function fmtDate(d){ return d.toISOString().slice(0,10); }
   function safeJsonParse(x){ try { return JSON.parse(x); } catch { return null; } }
   async function aggregateFromAudit(s, from, to) {
-    let logs = [];
-    try {
-      logs = await API.get('getAuditLogs', {
-        role: s.role,
-        user: s.email,
-        limit: 500
+    const byDay = {};
+    let d = new Date(from + 'T00:00:00');
+    const end = new Date(to + 'T00:00:00');
+    while (d <= end) {
+      const key = fmtDate(d);
+      const r = await API.get('getOwnerDashboard', {
+        role: 'owner',
+        user: s.email || 'owner@local',
+        branch: 'MAIN',
+        date: key
       });
-    } catch (e) {
-      // Fallback to owner dashboard endpoint when audit endpoint is unavailable.
-      const byDay = {};
-      let d = new Date(from + 'T00:00:00');
-      const end = new Date(to + 'T00:00:00');
-      while (d <= end) {
-        const key = fmtDate(d);
-        const r = await API.get('getOwnerDashboard', {
-          role: 'owner',
-          user: 'owner@local',
-          branch: 'MAIN',
-          date: key
-        });
-        byDay[key] = r || {};
-        d.setDate(d.getDate() + 1);
-      }
-      let salesTotal = 0, cash = 0, transfer = 0, credit = 0, expenses = 0, deposits = 0, expected = 0, actual = 0, difference = 0;
-      const reconRows = [];
-      Object.keys(byDay).forEach((key) => {
-        const x = byDay[key];
-        salesTotal += Number(x.sales_today || 0);
-        cash += Number(x.cash || 0);
-        transfer += Number(x.transfer || 0);
-        credit += Number(x.credit || 0);
-        expenses += Number(x.expenses || 0);
-        deposits += Number(x.deposits || 0);
-        expected += Number(x.expected_cash || 0);
-        actual += Number(x.actual_cash || 0);
-        difference += Number(x.difference || 0);
-        if (Number(x.difference || 0) !== 0) {
-          reconRows.push({
-            entry_date: key,
-            branch: 'MAIN',
-            employee: 'Auto',
-            expected_cash: Number(x.expected_cash || 0),
-            actual_cash: Number(x.actual_cash || 0),
-            difference: Number(x.difference || 0),
-            recon_status: String(x.recon_status || ''),
-            difference_reason: String(x.difference_reason || '')
-          });
-        }
-      });
-      return { salesTotal, cash, transfer, credit, expenses, deposits, expected, actual, difference, reconRows };
+      byDay[key] = r || {};
+      d.setDate(d.getDate() + 1);
     }
-    const safeLogs = Array.isArray(logs) ? logs : [];
-    if (!safeLogs.length) {
-      return { salesTotal: 0, cash: 0, transfer: 0, credit: 0, expenses: 0, deposits: 0, expected: 0, actual: 0, difference: 0, reconRows: [] };
-    }
-    const source = safeLogs;
-    const rows = source;
     let salesTotal = 0, cash = 0, transfer = 0, credit = 0, expenses = 0, deposits = 0, expected = 0, actual = 0, difference = 0;
-    const seen = new Set();
     const reconRows = [];
-    for (const row of rows) {
-      const action = String(row[4] || '');
-      const table = String(row[5] || '');
-      const recordId = String(row[6] || '');
-      if (action !== 'CREATE') continue;
-      if (recordId && seen.has(recordId)) continue;
-      if (recordId) seen.add(recordId);
-      const payload = safeJsonParse(row[8] || '');
-      if (!payload) continue;
-
-      if ((table === 'DAILY_SALES' || table === 'EXPENSES' || table === 'DEPOSITS') && Array.isArray(payload)) {
-        const entryDate = String(payload[4] || '');
-        if (entryDate < from || entryDate > to) continue;
-        if (table === 'DAILY_SALES') {
-          cash += Number(payload[6] || 0);
-          transfer += Number(payload[7] || 0);
-          credit += Number(payload[8] || 0);
-          salesTotal += Number(payload[9] || 0);
-        } else if (table === 'EXPENSES') {
-          expenses += Number(payload[8] || 0);
-        } else if (table === 'DEPOSITS') {
-          deposits += Number(payload[7] || 0);
-        }
+    Object.keys(byDay).forEach((key) => {
+      const x = byDay[key];
+      salesTotal += Number(x.sales_today || 0);
+      cash += Number(x.cash || 0);
+      transfer += Number(x.transfer || 0);
+      credit += Number(x.credit || 0);
+      expenses += Number(x.expenses || 0);
+      deposits += Number(x.deposits || 0);
+      expected += Number(x.expected_cash || 0);
+      actual += Number(x.actual_cash || 0);
+      difference += Number(x.difference || 0);
+      if (Number(x.difference || 0) !== 0) {
+        reconRows.push({
+          entry_date: key,
+          branch: 'MAIN',
+          employee: 'Auto',
+          expected_cash: Number(x.expected_cash || 0),
+          actual_cash: Number(x.actual_cash || 0),
+          difference: Number(x.difference || 0),
+          recon_status: String(x.recon_status || ''),
+          difference_reason: String(x.difference_reason || '')
+        });
       }
-
-      if (table === 'CASH_RECON') {
-        if (Array.isArray(payload)) {
-          const ts = String(payload[4] || '').slice(0, 10);
-          if (ts >= from && ts <= to) {
-            const exp = Number(payload[6] || 0);
-            const act = Number(payload[7] || 0);
-            const diff = Number(payload[8] || 0);
-            expected += exp;
-            actual += act;
-            difference += diff;
-            reconRows.push({
-              entry_date: ts,
-              branch: String(payload[5] || 'MAIN'),
-              employee: String(payload[2] || ''),
-              expected_cash: exp,
-              actual_cash: act,
-              difference: diff,
-              recon_status: String(payload[9] || ''),
-              difference_reason: String(payload[10] || '')
-            });
-          }
-        } else if (payload && typeof payload === 'object') {
-          const ts = String(payload.timestamp || '').slice(0, 10);
-          if (ts >= from && ts <= to) {
-            const exp = Number(payload.expected_cash || 0);
-            const act = Number(payload.actual_cash || 0);
-            const diff = Number(payload.difference || 0);
-            expected += exp;
-            actual += act;
-            difference += diff;
-            reconRows.push({
-              entry_date: ts,
-              branch: 'MAIN',
-              employee: String(payload.submitted_by || ''),
-              expected_cash: exp,
-              actual_cash: act,
-              difference: diff,
-              recon_status: diff === 0 ? 'MATCHED' : (diff < 0 ? 'SHORT' : 'OVER'),
-              difference_reason: String(payload.difference_reason || '')
-            });
-          }
-        }
-      }
-    }
-    if (expected === 0 && actual === 0 && difference === 0) {
-      expected = cash - expenses - deposits;
-      actual = expected;
-      difference = 0;
-    }
+    });
     return { salesTotal, cash, transfer, credit, expenses, deposits, expected, actual, difference, reconRows };
   }
 
